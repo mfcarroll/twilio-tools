@@ -14,7 +14,6 @@ exports.handler = async function (context, event, callback) {
         to: event.to_number,
       });
 
-      // Success Screen with details
       const html = `
         <html>
           <head>
@@ -34,24 +33,16 @@ exports.handler = async function (context, event, callback) {
             <div class="container">
               <h2>✅ Message Sent!</h2>
               <div class="details">
-                <div class="label">From:</div>
-                <div class="value">${event.from_number}</div>
-                
-                <div class="label">To:</div>
-                <div class="value">${event.to_number}</div>
-                
-                <div class="label">Message:</div>
-                <div class="value" style="white-space: pre-wrap;">${event.message_body}</div>
-
-                <div class="label">SID:</div>
-                <div class="value" style="font-family: monospace; font-size: 0.9em; color: #777;">${resp.sid}</div>
+                <div class="label">From:</div><div class="value">${event.from_number}</div>
+                <div class="label">To:</div><div class="value">${event.to_number}</div>
+                <div class="label">Message:</div><div class="value" style="white-space: pre-wrap;">${event.message_body}</div>
+                <div class="label">SID:</div><div class="value" style="font-family: monospace; font-size: 0.9em; color: #777;">${resp.sid}</div>
               </div>
               <a href="?" class="button">Send Another</a>
             </div>
           </body>
         </html>
       `;
-
       const response = new Twilio.Response();
       response.setBody(html);
       response.appendHeader("Content-Type", "text/html");
@@ -77,6 +68,7 @@ exports.handler = async function (context, event, callback) {
         <head>
           <title>Twilio Sender</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
+          <script src="https://unpkg.com/libphonenumber-js@1.10.49/bundle/libphonenumber-max.js"></script>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f6f8; padding: 20px; }
             .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -86,11 +78,58 @@ exports.handler = async function (context, event, callback) {
             button:hover { background: #c21927; }
             button:disabled { background: #ccc; cursor: not-allowed; }
             label { font-weight: 600; display: block; margin-bottom: 5px; color: #121c2d; }
+            .error-msg { color: #E31C2D; font-size: 0.9em; display: none; margin-top: -10px; margin-bottom: 15px; }
+            input.invalid { border-color: #E31C2D; background-color: #fff6f6; }
           </style>
           <script>
+            // Phone Validation Logic
+            function validateAndFormat() {
+              const input = document.getElementById('to_number');
+              const error = document.getElementById('phone-error');
+              const btn = document.getElementById('submit-btn');
+              const rawValue = input.value.trim();
+
+              // Empty check
+              if (!rawValue) {
+                input.classList.remove('invalid');
+                error.style.display = 'none';
+                btn.disabled = true;
+                return;
+              }
+
+              try {
+                // Parse number (Default to US if no country code provided)
+                const phoneNumber = libphonenumber.parsePhoneNumber(rawValue, 'US');
+
+                if (phoneNumber && phoneNumber.isValid()) {
+                  // Valid! Format nicely to E.164 (+1234567890)
+                  input.value = phoneNumber.format('E.164');
+                  input.classList.remove('invalid');
+                  error.style.display = 'none';
+                  btn.disabled = false;
+                } else {
+                  throw new Error('Invalid');
+                }
+              } catch (e) {
+                // Invalid
+                input.classList.add('invalid');
+                error.style.display = 'block';
+                btn.disabled = true;
+              }
+            }
+
+            // Prevent double submit
             function handleSubmit(form) {
-              const btn = form.querySelector('button');
-              if (btn.disabled) return false; // Stop double submits
+              const btn = document.getElementById('submit-btn');
+              if (btn.disabled || btn.innerText === 'Sending...') return false;
+              
+              // One final check before sending
+              const input = document.getElementById('to_number');
+              try {
+                const phoneNumber = libphonenumber.parsePhoneNumber(input.value, 'US');
+                if (!phoneNumber || !phoneNumber.isValid()) return false;
+              } catch(e) { return false; }
+
               btn.disabled = true;
               btn.innerText = 'Sending...';
               return true;
@@ -103,17 +142,17 @@ exports.handler = async function (context, event, callback) {
             <form method="POST" onsubmit="return handleSubmit(this)">
               
               <label>From Number:</label>
-              <select name="from_number">
-                ${optionsHtml}
-              </select>
+              <select name="from_number">${optionsHtml}</select>
 
               <label>To Number:</label>
-              <input type="tel" name="to_number" placeholder="+1..." required />
+              <input type="tel" id="to_number" name="to_number" placeholder="(555) 555-5555" 
+                     onblur="validateAndFormat()" oninput="document.getElementById('submit-btn').disabled = true" required />
+              <div id="phone-error" class="error-msg">Please enter a valid phone number.</div>
               
               <label>Message:</label>
               <textarea name="message_body" required>STOP</textarea>
 
-              <button type="submit">Send Message</button>
+              <button type="submit" id="submit-btn" disabled>Send Message</button>
             </form>
           </div>
         </body>
@@ -135,30 +174,20 @@ exports.handler = async function (context, event, callback) {
  */
 function checkAuth(context, event) {
   if (!context.ADMIN_USERNAME || !context.ADMIN_PASSWORD) return null;
-
-  const request = event.request || {};
-  const headers = request.headers || {};
-  const authHeader = headers.authorization || headers.Authorization;
-
-  if (!authHeader) {
+  const h = (event.request && event.request.headers) || {};
+  const authHeader = h.authorization || h.Authorization;
+  if (!authHeader) return createAuthResponse();
+  const [user, pass] = Buffer.from(authHeader.split(" ")[1], "base64")
+    .toString("utf-8")
+    .split(":");
+  if (user !== context.ADMIN_USERNAME || pass !== context.ADMIN_PASSWORD)
     return createAuthResponse();
-  }
-
-  const encoded = authHeader.split(" ")[1];
-  const decoded = Buffer.from(encoded, "base64").toString("utf-8");
-  const [user, pass] = decoded.split(":");
-
-  if (user !== context.ADMIN_USERNAME || pass !== context.ADMIN_PASSWORD) {
-    return createAuthResponse();
-  }
-
   return null;
 }
-
 function createAuthResponse() {
-  const response = new Twilio.Response();
-  response.setStatusCode(401);
-  response.appendHeader("WWW-Authenticate", 'Basic realm="Twilio Admin Area"');
-  response.setBody("Unauthorized: Please login.");
-  return response;
+  const r = new Twilio.Response();
+  r.setStatusCode(401);
+  r.appendHeader("WWW-Authenticate", 'Basic realm="Twilio SMS Tool"');
+  r.setBody("Unauthorized");
+  return r;
 }
