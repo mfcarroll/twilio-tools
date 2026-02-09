@@ -1,0 +1,42 @@
+name: Deploy to Twilio
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Twilio CLI and Plugin
+        run: |
+          npm install -g twilio-cli
+          twilio plugins:install @twilio-labs/plugin-serverless
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Deploy to Twilio
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_API_KEY: ${{ secrets.TWILIO_API_KEY }}
+          TWILIO_API_SECRET: ${{ secrets.TWILIO_API_SECRET }}
+        # We pass env vars explicitly so the build process can use them
+        run: |
+          twilio serverless:deploy \
+            --force \
+            --env ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }} \
+            --env AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }} \
+            --env TWILIO_NUMBER="${{ secrets.TWILIO_NUMBER }}" \
+            --env ROUTER_CONFIG='${{ vars.ROUTER_CONFIG }}' \
+            --env SMS_TOOL_USERNAME="${{ secrets.SMS_TOOL_USERNAME }}" \
+            --env SMS_TOOL_PASSWORD="${{ secrets.SMS_TOOL_PASSWORD }}"

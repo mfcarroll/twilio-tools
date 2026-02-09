@@ -173,14 +173,14 @@ exports.handler = async function (context, event, callback) {
  * Helper: Validates HTTP Basic Auth
  */
 function checkAuth(context, event) {
-  if (!context.ADMIN_USERNAME || !context.ADMIN_PASSWORD) return null;
+  if (!context.SMS_TOOL_USERNAME || !context.SMS_TOOL_PASSWORD) return null;
   const h = (event.request && event.request.headers) || {};
   const authHeader = h.authorization || h.Authorization;
   if (!authHeader) return createAuthResponse();
   const [user, pass] = Buffer.from(authHeader.split(" ")[1], "base64")
     .toString("utf-8")
     .split(":");
-  if (user !== context.ADMIN_USERNAME || pass !== context.ADMIN_PASSWORD)
+  if (user !== context.SMS_TOOL_USERNAME || pass !== context.SMS_TOOL_PASSWORD)
     return createAuthResponse();
   return null;
 }
