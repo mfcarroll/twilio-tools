@@ -82,54 +82,59 @@ exports.handler = async function (context, event, callback) {
             input.invalid { border-color: #E31C2D; background-color: #fff6f6; }
           </style>
           <script>
-            // Phone Validation Logic
             function validateAndFormat() {
-              const input = document.getElementById('to_number');
+              const displayInput = document.getElementById('display_number');
+              const hiddenInput = document.getElementById('hidden_to_number');
               const error = document.getElementById('phone-error');
               const btn = document.getElementById('submit-btn');
-              const rawValue = input.value.trim();
+              const rawValue = displayInput.value.trim();
 
-              // Empty check
               if (!rawValue) {
-                input.classList.remove('invalid');
+                displayInput.classList.remove('invalid');
                 error.style.display = 'none';
                 btn.disabled = true;
-                return;
+                hiddenInput.value = '';
+                return false;
               }
 
               try {
-                // Parse number (Default to US if no country code provided)
+                // Parse number (Default to US)
                 const phoneNumber = libphonenumber.parsePhoneNumber(rawValue, 'US');
 
                 if (phoneNumber && phoneNumber.isValid()) {
-                  // Valid! Format nicely to E.164 (+1234567890)
-                  input.value = phoneNumber.format('E.164');
-                  input.classList.remove('invalid');
+                  // 1. Update Visible Input to "National" format: (123) 456-7890
+                  displayInput.value = phoneNumber.format('NATIONAL');
+                  
+                  // 2. Update Hidden Input to "E.164" format: +11234567890
+                  hiddenInput.value = phoneNumber.format('E.164');
+                  
+                  displayInput.classList.remove('invalid');
                   error.style.display = 'none';
                   btn.disabled = false;
+                  return true;
                 } else {
                   throw new Error('Invalid');
                 }
               } catch (e) {
-                // Invalid
-                input.classList.add('invalid');
+                displayInput.classList.add('invalid');
                 error.style.display = 'block';
                 btn.disabled = true;
+                hiddenInput.value = '';
+                return false;
               }
             }
 
-            // Prevent double submit
             function handleSubmit(form) {
               const btn = document.getElementById('submit-btn');
+              
+              // Prevent double submit if button is already processing
               if (btn.disabled || btn.innerText === 'Sending...') return false;
               
-              // One final check before sending
-              const input = document.getElementById('to_number');
-              try {
-                const phoneNumber = libphonenumber.parsePhoneNumber(input.value, 'US');
-                if (!phoneNumber || !phoneNumber.isValid()) return false;
-              } catch(e) { return false; }
+              // Run validation one last time in case they hit Enter without blurring
+              const isValid = validateAndFormat();
+              if (!isValid) return false;
 
+              // Lock the form
               btn.disabled = true;
               btn.innerText = 'Sending...';
               return true;
@@ -145,8 +150,12 @@ exports.handler = async function (context, event, callback) {
               <select name="from_number">${optionsHtml}</select>
 
               <label>To Number:</label>
-              <input type="tel" id="to_number" name="to_number" placeholder="(555) 555-5555" 
-                     onblur="validateAndFormat()" oninput="document.getElementById('submit-btn').disabled = true" required />
+              <input type="hidden" id="hidden_to_number" name="to_number" />
+              <input type="tel" id="display_number" placeholder="(555) 555-5555" 
+                     onblur="validateAndFormat()" 
+                     oninput="document.getElementById('submit-btn').disabled = true" 
+                     required />
+                     
               <div id="phone-error" class="error-msg">Please enter a valid phone number.</div>
               
               <label>Message:</label>
@@ -169,21 +178,30 @@ exports.handler = async function (context, event, callback) {
   }
 };
 
-/**
- * Helper: Validates HTTP Basic Auth
- */
+/** Auth Helper */
 function checkAuth(context, event) {
+  // Updated to use SMS_TOOL_USERNAME and SMS_TOOL_PASSWORD
   if (!context.SMS_TOOL_USERNAME || !context.SMS_TOOL_PASSWORD) return null;
+
   const h = (event.request && event.request.headers) || {};
   const authHeader = h.authorization || h.Authorization;
+
   if (!authHeader) return createAuthResponse();
+
   const [user, pass] = Buffer.from(authHeader.split(" ")[1], "base64")
     .toString("utf-8")
     .split(":");
-  if (user !== context.SMS_TOOL_USERNAME || pass !== context.SMS_TOOL_PASSWORD)
+
+  if (
+    user !== context.SMS_TOOL_USERNAME ||
+    pass !== context.SMS_TOOL_PASSWORD
+  ) {
     return createAuthResponse();
+  }
+
   return null;
 }
+
 function createAuthResponse() {
   const r = new Twilio.Response();
   r.setStatusCode(401);
