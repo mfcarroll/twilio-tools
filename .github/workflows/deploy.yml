@@ -25,18 +25,22 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Create .env file
+        run: |
+          touch .env
+          echo "ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
+          echo "AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
+          echo "ROUTER_CONFIG='${{ vars.ROUTER_CONFIG }}'" >> .env
+          echo "SMS_TOOL_USERNAME=${{ secrets.SMS_TOOL_USERNAME }}" >> .env
+          echo "SMS_TOOL_PASSWORD=${{ secrets.SMS_TOOL_PASSWORD }}" >> .env
+          # Note: TWILIO_NUMBER is optional if you aren't using it in code, 
+          # but you can add it here if you kept it.
+
       - name: Deploy to Twilio
+        # These env vars authenticate the CLI itself
         env:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_API_KEY: ${{ secrets.TWILIO_API_KEY }}
           TWILIO_API_SECRET: ${{ secrets.TWILIO_API_SECRET }}
-        # We pass env vars explicitly so the build process can use them
-        run: |
-          twilio serverless:deploy \
-            --force \
-            --env ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }} \
-            --env AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }} \
-            --env TWILIO_NUMBER="${{ secrets.TWILIO_NUMBER }}" \
-            --env ROUTER_CONFIG='${{ vars.ROUTER_CONFIG }}' \
-            --env SMS_TOOL_USERNAME="${{ secrets.SMS_TOOL_USERNAME }}" \
-            --env SMS_TOOL_PASSWORD="${{ secrets.SMS_TOOL_PASSWORD }}"
+        # Now the command is simple and clean
+        run: twilio serverless:deploy --force
