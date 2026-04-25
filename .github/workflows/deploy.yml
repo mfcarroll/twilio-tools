@@ -27,15 +27,17 @@ jobs:
         run: npm ci
 
       - name: Create .env file
+        env:
+          # Pass the GitHub variable into a shell environment variable first
+          ROUTER_CONFIG_JSON: ${{ vars.ROUTER_CONFIG }}
         run: |
           touch .env
           echo "ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
           echo "AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
-          echo "ROUTER_CONFIG='${{ vars.ROUTER_CONFIG }}'" >> .env
+          # Safely write the variable to the file keeping quotes intact
+          echo "ROUTER_CONFIG='$ROUTER_CONFIG_JSON'" >> .env
           echo "SMS_TOOL_USERNAME=${{ secrets.SMS_TOOL_USERNAME }}" >> .env
           echo "SMS_TOOL_PASSWORD=${{ secrets.SMS_TOOL_PASSWORD }}" >> .env
-          # Note: TWILIO_NUMBER is optional if you aren't using it in code, 
-          # but you can add it here if you kept it.
 
       - name: Deploy to Twilio
         # These env vars authenticate the CLI itself
